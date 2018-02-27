@@ -8,6 +8,9 @@
 #include "CoDrone.h"
 #include "Arduino.h"
 #include <EEPROMs.h>
+#include "SoftwareSerial.h"
+
+extern SoftwareSerial mySerial;
 
 /***************************************************************************/
 
@@ -123,7 +126,7 @@ boolean CoDroneClass::CRC16_Check(unsigned char data[], int len, unsigned char c
 void CoDroneClass::begin(long baud)
 {
 	DRONE_SERIAL.begin(baud);   // µå·Ð°ú Åë½Å °³½Ã	(115200bps)
-		
+
 		
 	#if defined(FIND_HWSERIAL1)
 		DEBUG_SERIAL.begin(baud);		// Serial Debug Begin	(115200bps)
@@ -151,8 +154,6 @@ void CoDroneClass::begin(long baud)
   
   //Link Active Mode
   Send_LinkModeBroadcast(LinkModeActive);		
-  
-  delay(500);  
 }
 
 /***************************************************************************/
@@ -452,6 +453,7 @@ void CoDroneClass::Set_TrimReset()
 /***************************************************************************/
 void CoDroneClass::Send_Check(byte _data[], byte _length, byte _crc[])
 {
+	return;
 	if(sendCheckFlag == 1)
 	{
 	  timeOutSendPreviousMillis = millis();
@@ -601,7 +603,7 @@ void CoDroneClass::BattleBegin(byte teamSelect)
 {
 	team = teamSelect;
 	Crashed = 0;
-	
+
 	if(team == TEAM_RED)
 	{		
 		weapon = RED_MISSILE;
@@ -1073,12 +1075,28 @@ void CoDroneClass::Request_TrimDrive()
 }
 void CoDroneClass::Request_ImuRawAndAngle()
 {
-	//DEBUG_SERIAL.println("Requesting data:");
-	Send_Command(cType_Request, Req_ImuRawAndAngle);    
+	static byte alive_cnt = 0xFF;
+	static int time;
+	
+	if(alive_cnt != Alive.ImuRawAndAngle || millis()-time > 300){
+		//DEBUG_SERIAL.println("Requesting data:");
+		Send_Command(cType_Request, Req_ImuRawAndAngle);
+		time = millis();
+	}
+	
+	alive_cnt = Alive.ImuRawAndAngle;
 }
 void CoDroneClass::Request_Pressure()
 {
-	Send_Command(cType_Request, Req_Pressure);    
+	static byte alive_cnt = 0xFF;
+	static int time;
+
+	if(alive_cnt != Alive.Pressure || millis()-time > 300){
+		//DEBUG_SERIAL.println("Requesting data:");
+		Send_Command(cType_Request, Req_Pressure);   
+		time = millis();
+	}
+	alive_cnt = Alive.Pressure;
 }
 void CoDroneClass::Request_ImageFlow()
 {
@@ -1375,19 +1393,24 @@ void CoDroneClass::Send_Processing(byte _data[], byte _length, byte _crc[])
     
  	DRONE_SERIAL.write(_packet, _length + 6);
  	 	 
-  #if defined(FIND_HWSERIAL1)
-	if(debugMode == 1)
+//  #if defined(FIND_HWSERIAL1)
+//	if(debugMode == 1)
+
+	/*
 	{
-		DEBUG_SERIAL.print("> SEND : ");
+		mySerial.print(millis()); mySerial.print(" ms");
+		mySerial.print("> SEND : ");
 		
 		for(int i = 0; i < _length+6 ; i++)
 		{
-	  	DEBUG_SERIAL.print(_packet[i],HEX);	  	
-	  	DEBUG_SERIAL.print(" ");	     
+	  	mySerial.print(_packet[i],HEX);	  	
+	  	mySerial.print(" ");	     
 	  }
-	  DEBUG_SERIAL.println("");	
-	}	
-  #endif
+	  mySerial.println("");	
+	}
+	*/
+
+//  #endif
  	
  	
 }
@@ -1583,10 +1606,29 @@ void CoDroneClass::Receive()
 	                gyroAngle[1] = droneImuRawAndAngle[7];
 	                gyroAngle[2] = droneImuRawAndAngle[8];
                 	Alive.ImuRawAndAngle++;
+                	
+                	mySerial.print(millis()); mySerial.print(" ");
+                	mySerial.print(accel[0]); mySerial.print(" ");
+                	mySerial.print(accel[1]); mySerial.print(" ");
+                	mySerial.print(accel[2]); mySerial.print(" ");
+                	mySerial.print(gyroRaw[0]); mySerial.print(" ");
+                	mySerial.print(gyroRaw[1]); mySerial.print(" ");
+                	mySerial.print(gyroRaw[2]); mySerial.print(" ");
+                	mySerial.print(gyroAngle[0]); mySerial.print(" ");
+                	mySerial.print(gyroAngle[1]); mySerial.print(" ");
+                	mySerial.print(gyroAngle[2]); mySerial.print(" ");
+                	mySerial.print(Alive.ImuRawAndAngle); mySerial.print(" ");
+                	mySerial.println();
                 }
                 
                 else if (receiveDtype == dType_Pressure)//dron Pressure
                 {
+                	int d1;
+                	int d2;
+                	int temperature;
+                	int pressure;
+                	
+                	
                 	dronePressure[0] = dataBuff[2];
                 	dronePressure[1] = dataBuff[3];	
                 	dronePressure[2] = dataBuff[4];	
@@ -1603,7 +1645,20 @@ void CoDroneClass::Receive()
                 	dronePressure[13] = dataBuff[15];
                 	dronePressure[14] = dataBuff[16];
                 	dronePressure[15] = dataBuff[17];
+                	
+                	d1 = (dronePressure[3] << 24) | (dronePressure[2] << 16) | (dronePressure[1] << 8) | (dronePressure[0]);
+                	d2 = (dronePressure[7] << 24) | (dronePressure[6] << 16) | (dronePressure[5] << 8) | (dronePressure[4]);
+                	temperature = (dronePressure[11] << 24) | (dronePressure[10] << 16) | (dronePressure[9] << 8) | (dronePressure[8]);
+                	pressure = (dronePressure[15] << 24) | (dronePressure[14] << 16) | (dronePressure[13] << 8) | (dronePressure[12]);
                 	Alive.Pressure++;
+                	
+                	mySerial.print(millis()); mySerial.print(" ");
+					mySerial.print(d1); mySerial.print(" ");
+					mySerial.print(d2); mySerial.print(" ");
+					mySerial.print(temperature); mySerial.print(" ");
+					mySerial.print(pressure); mySerial.print(" ");
+                	mySerial.print(Alive.Pressure); mySerial.print(" ");
+                	mySerial.println();
               	}
                 
                 else if (receiveDtype ==  dType_ImageFlow)//dron ImageFlow
@@ -1753,8 +1808,18 @@ void CoDroneClass::Receive()
               	Alive.LinkDiscoveredDevice++;
               }              
               /***********************************************/      
+/*
+            mySerial.print(millis()); mySerial.print(" ms");
+			mySerial.print("> RECEIVE : ");
 
-              checkHeader = 0;
+			for(int i = 0; i < receiveLength + 6 ; i++)
+			{
+			mySerial.print(cmdBuff[i],HEX);	  	
+			mySerial.print(" ");	     
+			}
+			mySerial.println("");
+*/
+            	checkHeader = 0;
               cmdIndex = 0;
             }
           }
