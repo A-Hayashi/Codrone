@@ -32,7 +32,8 @@ enum tType
   tType_ImuRawAndAngl,
   tType_Pressure,
   tType_Temperature,
-  tType_AnalogStick
+  tType_AnalogStick,
+  tType_ControlState
 };
 
 enum rType

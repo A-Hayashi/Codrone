@@ -83,7 +83,7 @@ typedef struct _ALIVESTRUCT {
 /***********************************************************************/
 #define BATTLE_CHECK_TIME  		300
 #define LED_CHECK_TIME 			60
-#define	SEND_CHECK_TIME    		10
+#define	SEND_CHECK_TIME    		50
 
 /***********************************************************************/
 
@@ -773,6 +773,7 @@ public:
 	int SendInterval; //millis seconds
 	byte timeOutRetry;
 	
+	byte sendCheckCount = 0;	
 	byte sendCheckFlag;
 	
 	byte receiveAttitudeSuccess;

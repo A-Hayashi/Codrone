@@ -15,6 +15,7 @@ SoftwareSerial mySerial(27, 28); /* Rx,Tx */
 EEPSTRUCT EEP;
 int Yaw, Throttle, Pitch, Roll;
 byte IR_Sensor;
+byte ControlState;
 
 void setup()
 {
@@ -52,46 +53,40 @@ void get_ir_sensor()
 
 void loop()
 {
-  //  receive_pcdata();
+  receive_pcdata();
   get_dronedata();
-  //  get_ir_sensor();
+  get_ir_sensor();
   get_analog_stick();
-  //  state_machine();
-  //  send_pcdata();
+  state_machine();
+  send_pcdata();
 }
 
-Metro interval500 = Metro(500);
-Metro interval1000 = Metro(1000);
+Metro interval100 = Metro(100);
+Metro interval2500 = Metro(2500);
 void get_dronedata()
 {
-  if (interval500.check()) {
-    if (Throttle > 50)
-      CoDrone.Request_Pressure();
-    if (Throttle < -50)
-      CoDrone.Request_ImuRawAndAngle();
+  if (interval100.check()) {
+    CoDrone.Request_DroneAttitude();
+    CoDrone.Request_ImuRawAndAngle();
+    CoDrone.Request_Pressure();
   }
-  //  if (interval100.check()) {
-  //    CoDrone.Request_DroneAttitude();
-  //    CoDrone.Request_ImuRawAndAngle();
-  //    CoDrone.Request_Pressure();
-  //  }
-  //  if (interval5000.check()) {
-  //    CoDrone.Request_DroneGyroBias();
-  //    CoDrone.Request_TrimAll();
-  //    CoDrone.Request_Temperature();
-  //  }
+  if (interval2500.check()) {
+    CoDrone.Request_DroneGyroBias();
+    CoDrone.Request_TrimAll();
+    CoDrone.Request_Temperature();
+  }
   CoDrone.Receive();
+
 }
 
 void receive_pcdata()
 {
 }
 
+Metro interval50 = Metro(50);
+Metro interval1000 = Metro(1000);
 void send_pcdata()
 {
-  Metro interval50 = Metro(50);
-  Metro interval2500 = Metro(2500);
-
   if (interval50.check()) {
     Send_Attitude();
     Send_ImuRawAndAngl();
@@ -99,13 +94,22 @@ void send_pcdata()
     Send_IrMessage();
     Send_AnalogStick();
   }
-
-  if (interval2500.check()) {
+  if (interval1000.check()) {
     Send_GyroBias();
     Send_TrimAll();
     Send_Temperature();
+    Send_ControlState();
   }
 }
+void Send_ControlState()
+{
+  byte data[12];
+  byte len = 1;
+  data[0] = ControlState;
+
+  Send_Processing(tType_ControlState, data, len);
+}
+
 
 
 void Send_Attitude()
@@ -119,6 +123,14 @@ void Send_Attitude()
   data[4] = LowB(CoDrone.droneAttitude[2]);   //Yaw
   data[5] = HighB(CoDrone.droneAttitude[2]);
   data[6] = CoDrone.Alive.Attitude;
+
+  //  mySerial.print(millis()); mySerial.print(" ");
+  //  mySerial.print(CoDrone.droneAttitude[0]); mySerial.print(" ");
+  //  mySerial.print(CoDrone.droneAttitude[1]); mySerial.print(" ");
+  //  mySerial.print(CoDrone.droneAttitude[2]); mySerial.print(" ");
+  //  mySerial.print(CoDrone.Alive.Attitude); mySerial.print(" ");
+  //  mySerial.println();
+
   Send_Processing(tType_Attitude, data, len);
 }
 
@@ -239,22 +251,32 @@ void Send_Temperature()
 }
 
 
-
-byte Command;
 byte trans_state(byte state)
 {
   static byte next_state;
-  next_state = Command;
+  byte cmd;
+  if (mySerial.available()) cmd = mySerial.read();
+
+  if (((IR_Sensor&0x01)!=0x00) || cmd=='s') {
+    next_state = cmdType_Stop;
+  } else if (((IR_Sensor&0x80)!=0x00) || cmd=='c') {
+    next_state = cmdType_Control;
+  } else if ((state==cmdType_Stop) && (((IR_Sensor&0x40)!=0x00)||(cmd=='t'))) {
+    next_state = cmdType_TrimTune;
+  } else {
+
+  }
   return next_state;
 }
 
 void state_machine()
 {
   static byte old_state = cmdType_Control;
-  byte state = cmdType_Control;
+  static byte state = cmdType_Control;
   boolean state_change = false;
 
   state = trans_state(state);
+  ControlState = state;
 
   if (old_state != state) {
     state_change = true;
@@ -264,7 +286,7 @@ void state_machine()
 
   switch (state) {
     case cmdType_Control:
-      //      state_Control(state_change);
+      state_Control(state_change);
       break;
     case cmdType_EEP_Write:
       state_EEP_Write(state_change);
@@ -288,7 +310,7 @@ void state_machine()
       state_GainTune(state_change);
       break;
     default:
-      //      state_Control(state_change);
+      state_Control(state_change);
       break;
   }
   old_state = state;
@@ -323,7 +345,10 @@ void state_EEP_Read(boolean state_change)
 
 void state_TrimTune(boolean state_change)
 {
-  EEP.YawTrim = 0;
+  if (state_change) {
+    CoDrone.Buzz(2000, 4);
+    CoDrone.Buzz(4000, 4);
+  }
 }
 
 
@@ -355,7 +380,6 @@ void state_GainTune(boolean state_change)
 void Send_Processing(byte _cType, byte *_data, byte _length)
 {
   byte _packet[30];
-
   //START CODE
   _packet[0] = START1;
   _packet[1] = START2;

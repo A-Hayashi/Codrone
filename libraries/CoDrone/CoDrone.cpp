@@ -453,23 +453,31 @@ void CoDroneClass::Set_TrimReset()
 /***************************************************************************/
 void CoDroneClass::Send_Check(byte _data[], byte _length, byte _crc[])
 {
-	return;
 	if(sendCheckFlag == 1)
 	{
-	  timeOutSendPreviousMillis = millis();
+		timeOutSendPreviousMillis = millis();
 		
-	 	while(sendCheckFlag != 3)
-	 	{
-	 		while(!TimeOutSendCheck(SEND_CHECK_TIME))
+		while(sendCheckFlag != 3)
+		{
+			while(!TimeOutSendCheck(SEND_CHECK_TIME))
 			{
 				Receive();
 				if(sendCheckFlag == 3) break;
 			}
 			if(sendCheckFlag == 3) break;
-			
+			if(sendCheckCount == 3) break;			//check count 
 			Send_Processing(_data,_length,_crc);
-	 	}
-	  sendCheckFlag = 0;
+			sendCheckCount++;
+		}
+		/*
+		mySerial.print("sendCheckFlag: ");
+		mySerial.print(sendCheckFlag);
+		mySerial.print(" sendCheckCount: ");
+		mySerial.print(sendCheckCount);
+		mySerial.println();
+		*/
+		sendCheckFlag = 0;
+		sendCheckCount = 0;
 	}	
 }
 /***************************************************************************/
@@ -552,50 +560,24 @@ void CoDroneClass::Send_Control()
 
 void CoDroneClass::Send_Command(int sendCommand, int sendOption)
 {	
-  byte _packet[9];
-  byte _crc[2];
-  
-  byte _cType = dType_Command;
-  byte _len   = 0x02;  
-  
-  //header
-  _packet[0] = _cType;
-  _packet[1] = _len;
+	byte _packet[9];
+	byte _crc[2];
 
- //data
-  _packet[2] = sendCommand;
-  _packet[3] = sendOption;
-  
- unsigned short crcCal = CRC16_Make(_packet, _len+2);
-  _crc[0] = (crcCal >> 8) & 0xff;
-  _crc[1] = crcCal & 0xff;
-  
-  Send_Processing(_packet,_len,_crc);
-        
-////////////////////////////////////////////
+  	//header
+	_packet[0] = dType_Command;
+	_packet[1] = 0x02;
 
-	Send_Check(_packet,_len,_crc);
-	/*
-	if(sendCheckFlag == 1)
-	{
-	  timeOutSendPreviousMillis = millis();
-		
-	 	while(sendCheckFlag != 3)
-	 	{
-	 		while(!TimeOutSendCheck(3))
-			{
-				Receive();
-				if(sendCheckFlag == 3) break;
-			}
-			if(sendCheckFlag == 3) break;
-			
-			Send_Processing(_packet,_len,_crc);
-	 	}
-	  sendCheckFlag = 0;
-	}
-	*/
-///////////////////////////////////////////
-  
+ 	//data
+	_packet[2] = sendCommand;
+	_packet[3] = sendOption;
+
+	unsigned short crcCal = CRC16_Make(_packet, _packet[1]+2);
+	_crc[0] = (crcCal >> 8) & 0xff;
+	_crc[1] = crcCal & 0xff;
+
+
+	Send_Processing(_packet,_packet[1],_crc);
+	Send_Check(_packet,_packet[1],_crc);
 }
 /////////////////////////////////////////////////////
 
@@ -1058,6 +1040,7 @@ void CoDroneClass::Request_DroneAttitude()
 }
 void CoDroneClass::Request_DroneGyroBias()
 {
+	sendCheckFlag = 1;
 	Send_Command(cType_Request, Req_GyroBias);    
 }
 void CoDroneClass::Request_TrimAll()
@@ -1075,28 +1058,15 @@ void CoDroneClass::Request_TrimDrive()
 }
 void CoDroneClass::Request_ImuRawAndAngle()
 {
-	static byte alive_cnt = 0xFF;
-	static int time;
-	
-	if(alive_cnt != Alive.ImuRawAndAngle || millis()-time > 300){
-		//DEBUG_SERIAL.println("Requesting data:");
-		Send_Command(cType_Request, Req_ImuRawAndAngle);
-		time = millis();
-	}
-	
-	alive_cnt = Alive.ImuRawAndAngle;
+	sendCheckFlag = 1;
+	//DEBUG_SERIAL.println("Requesting data:");
+	Send_Command(cType_Request, Req_ImuRawAndAngle);
 }
 void CoDroneClass::Request_Pressure()
 {
-	static byte alive_cnt = 0xFF;
-	static int time;
-
-	if(alive_cnt != Alive.Pressure || millis()-time > 300){
-		//DEBUG_SERIAL.println("Requesting data:");
-		Send_Command(cType_Request, Req_Pressure);   
-		time = millis();
-	}
-	alive_cnt = Alive.Pressure;
+	sendCheckFlag = 1;
+	//DEBUG_SERIAL.println("Requesting data:");
+	Send_Command(cType_Request, Req_Pressure);   
 }
 void CoDroneClass::Request_ImageFlow()
 {
@@ -1116,6 +1086,7 @@ void CoDroneClass::Request_Motor()
 }
 void CoDroneClass::Request_Temperature()
 {
+	sendCheckFlag = 1;
 	Send_Command(cType_Request, Req_Temperature);    
 }
 
@@ -1396,7 +1367,7 @@ void CoDroneClass::Send_Processing(byte _data[], byte _length, byte _crc[])
 //  #if defined(FIND_HWSERIAL1)
 //	if(debugMode == 1)
 
-	/*
+/*
 	{
 		mySerial.print(millis()); mySerial.print(" ms");
 		mySerial.print("> SEND : ");
@@ -1408,7 +1379,7 @@ void CoDroneClass::Send_Processing(byte _data[], byte _length, byte _crc[])
 	  }
 	  mySerial.println("");	
 	}
-	*/
+*/
 
 //  #endif
  	
@@ -1416,6 +1387,7 @@ void CoDroneClass::Send_Processing(byte _data[], byte _length, byte _crc[])
 }
 
 /***************************************************************************/
+
 
 void CoDroneClass::Receive()
 {	
@@ -1490,7 +1462,8 @@ void CoDroneClass::Receive()
               else  receiveComplete = -1;
 
               if (receiveComplete == 1)
-              {                       	
+              {
+//              	mySerial.print("receiveDtype: "); mySerial.println(receiveDtype, HEX);
               	if (receiveDtype == dType_LinkState)		
                 {
                 	receiveLinkState = dataBuff[2];
@@ -1536,6 +1509,16 @@ void CoDroneClass::Receive()
 	                gyroAngle[1] = droneAttitude[1];
 	                gyroAngle[2] = droneAttitude[2];
                 	Alive.Attitude++;
+                	sendCheckFlag = 3;
+                	/*
+                	mySerial.print(millis()); mySerial.print(" ");
+                	mySerial.print(droneAttitude[0]); mySerial.print(" ");
+                	mySerial.print(droneAttitude[1]); mySerial.print(" ");
+                	mySerial.print(droneAttitude[2]); mySerial.print(" ");
+                	mySerial.print(Alive.Attitude); mySerial.print(" ");
+                	mySerial.println();
+                	*/
+                	
                 }      
                 
                 else if (receiveDtype == dType_GyroBias)		//dron GyroBias
@@ -1547,6 +1530,7 @@ void CoDroneClass::Receive()
 	                droneGyroBias[4] = dataBuff[6];
 	                droneGyroBias[5] = dataBuff[7];
                 	Alive.GyroBias++;
+                	sendCheckFlag = 3;
                 }                 
                                 
                 else if (receiveDtype == dType_TrimAll)		//dron TrimAll
@@ -1562,6 +1546,7 @@ void CoDroneClass::Receive()
 	                droneTrimAll[8] = dataBuff[10];
 	                droneTrimAll[9] = dataBuff[11];	      
                 	Alive.TrimAll++;
+                	sendCheckFlag = 3;
                 }           
                                 
                 else if (receiveDtype == dType_TrimFlight)		//dron TrimFlight
@@ -1606,7 +1591,8 @@ void CoDroneClass::Receive()
 	                gyroAngle[1] = droneImuRawAndAngle[7];
 	                gyroAngle[2] = droneImuRawAndAngle[8];
                 	Alive.ImuRawAndAngle++;
-                	
+                	sendCheckFlag = 3;
+/*                	
                 	mySerial.print(millis()); mySerial.print(" ");
                 	mySerial.print(accel[0]); mySerial.print(" ");
                 	mySerial.print(accel[1]); mySerial.print(" ");
@@ -1619,6 +1605,7 @@ void CoDroneClass::Receive()
                 	mySerial.print(gyroAngle[2]); mySerial.print(" ");
                 	mySerial.print(Alive.ImuRawAndAngle); mySerial.print(" ");
                 	mySerial.println();
+*/                	
                 }
                 
                 else if (receiveDtype == dType_Pressure)//dron Pressure
@@ -1651,7 +1638,8 @@ void CoDroneClass::Receive()
                 	temperature = (dronePressure[11] << 24) | (dronePressure[10] << 16) | (dronePressure[9] << 8) | (dronePressure[8]);
                 	pressure = (dronePressure[15] << 24) | (dronePressure[14] << 16) | (dronePressure[13] << 8) | (dronePressure[12]);
                 	Alive.Pressure++;
-                	
+                	sendCheckFlag = 3;
+/*                	
                 	mySerial.print(millis()); mySerial.print(" ");
 					mySerial.print(d1); mySerial.print(" ");
 					mySerial.print(d2); mySerial.print(" ");
@@ -1659,7 +1647,8 @@ void CoDroneClass::Receive()
 					mySerial.print(pressure); mySerial.print(" ");
                 	mySerial.print(Alive.Pressure); mySerial.print(" ");
                 	mySerial.println();
-              	}
+*/
+                }
                 
                 else if (receiveDtype ==  dType_ImageFlow)//dron ImageFlow
                 {
@@ -1723,6 +1712,7 @@ void CoDroneClass::Receive()
                 	droneTemperature[6] = dataBuff[8];
                 	droneTemperature[7] = dataBuff[9];
                 	Alive.Temperature++;
+                	sendCheckFlag = 3;
                 }    
                 
                 /***********************************************/                  
@@ -1809,17 +1799,17 @@ void CoDroneClass::Receive()
               }              
               /***********************************************/      
 /*
-            mySerial.print(millis()); mySerial.print(" ms");
-			mySerial.print("> RECEIVE : ");
+				mySerial.print(millis()); mySerial.print(" ms");
+				mySerial.print("> RECEIVE : ");
 
-			for(int i = 0; i < receiveLength + 6 ; i++)
-			{
-			mySerial.print(cmdBuff[i],HEX);	  	
-			mySerial.print(" ");	     
-			}
-			mySerial.println("");
+				for(int i = 0; i < receiveLength + 6 ; i++)
+				{
+					mySerial.print(cmdBuff[i],HEX);	  	
+					mySerial.print(" ");	     
+				}
+				mySerial.println("");
 */
-            	checkHeader = 0;
+              checkHeader = 0;
               cmdIndex = 0;
             }
           }
@@ -1834,6 +1824,7 @@ void CoDroneClass::Receive()
   }
   ReceiveEventCheck();
 }
+
 /***************************************************************************/
 
 void CoDroneClass::PrintDroneAddress()
@@ -3220,7 +3211,7 @@ void CoDroneClass::ReceiveEventCheck()
 	    {
 	    	if(sendCheckFlag == 1)
 	    	{
-	    		sendCheckFlag = 2;
+	    		//sendCheckFlag = 2;
 	  		}
 	  		
 	    	#if defined(FIND_HWSERIAL1)			
@@ -3246,8 +3237,8 @@ void CoDroneClass::ReceiveEventCheck()
 	    {	
 	    	if(sendCheckFlag == 2)
 	    	{
-	    		sendCheckFlag = 3;
-	 			}
+	    		//sendCheckFlag = 3;
+	 		}
 	 			
 	    	#if defined(FIND_HWSERIAL1)		
 	    	  // 	Serial.println(millis());		  

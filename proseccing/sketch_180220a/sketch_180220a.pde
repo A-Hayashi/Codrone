@@ -2,26 +2,53 @@ import  processing.serial.*; //<>// //<>//
 
 ReceiveData r_data;
 int[]   data;
+Serial  serial;
 
 void setup() {  
-  Serial  serial;
   size(400, 250);
   data = new int [width];
   r_data = new ReceiveData();
   serial = new Serial( this, Serial.list()[0], 9600 );
 }
 
-void serialEvent(Serial port) {
+public void settings() {
+  size(800, 800, P3D);
+}
 
+void serialEvent(Serial port) {
   r_data.Receive(port);
 }
 
 void draw() {
   background(0);
   fill(0xaa);
-  ellipse(width/2, height/2, r_data.Attitude.Roll, r_data.Attitude.Pitch);
+  ellipse(width*1/4+r_data.AnalogStick.Yaw, height*3/4-r_data.AnalogStick.Throttle, 20, 20);
+  ellipse(width*3/4+r_data.AnalogStick.Roll, height*3/4-r_data.AnalogStick.Pitch, 20, 20);
+  
+  //PFont font = createFont("Arial", 30);
+  //textFont(font);
+  
+  textSize(30);  
+  textAlign(RIGHT, TOP);
+  fill(0xaa);
+  text("ControlState: "+strs[r_data.ControlState], width-10, 0+10);
+  
+  translate(width/2, height*1/3);
+  rotateZ(radians(r_data.Attitude.Roll));
+  rotateX(radians(r_data.Attitude.Pitch));
+  rotateY(radians(-r_data.Attitude.Yaw));
+  box(200, 5, 300);
 }
 
+void keyPressed() {
+  if (key == 'c') {
+    serial.write('c');
+  } else if (key == 's') {
+    serial.write('s');
+  } else if (key == 't') {
+    serial.write('t');
+  }
+}
 
 enum tType
 {
@@ -32,7 +59,19 @@ enum tType
     tType_ImuRawAndAngl, 
     tType_Pressure, 
     tType_Temperature, 
-    tType_AnalogStick;
+    tType_AnalogStick, 
+    tType_ControlState,
+};
+
+String[] strs = { 
+  "Control", 
+  "EEP_Write", 
+  "EEP_Read", 
+  "TrimTune", 
+  "TrimSet", 
+  "Stop", 
+  "Hover", 
+  "GainTune", 
 };
 
 
@@ -56,6 +95,7 @@ public class ReceiveData {
   Pressure_t Pressure = new Pressure_t();
   Temperature_t Temperature = new Temperature_t();
   AnalogStick_t AnalogStick = new AnalogStick_t(); 
+  byte ControlState;
 
 
   private int UniteByte(byte upper, byte lower) {
@@ -105,10 +145,14 @@ public class ReceiveData {
                 Attitude.Pitch = UniteByte(dataBuff[5], dataBuff[4]);
                 Attitude.Yaw = UniteByte(dataBuff[7], dataBuff[6]);
                 Attitude.AliveCnt = dataBuff[8];
-                //print(Attitude.Roll); print(" ");
-                //print(Attitude.Pitch); print(" ");
-                //print(Attitude.Yaw); print(" ");
-                //print(Attitude.AliveCnt); print(" ");
+                //print(Attitude.Roll); 
+                //print(" ");
+                //print(Attitude.Pitch); 
+                //print(" ");
+                //print(Attitude.Yaw); 
+                //print(" ");
+                //print(Attitude.AliveCnt); 
+                //print(" ");
                 //println();
               } else if (receiveDtype == tType.tType_GyroBias.ordinal()) {
                 /* not available */
@@ -204,6 +248,9 @@ public class ReceiveData {
                 //print(AnalogStick.Yaw); print(" ");
                 //print(AnalogStick.Throttle); print(" ");
                 //println();
+              } else if (receiveDtype == tType.tType_ControlState.ordinal()) {
+                ControlState = dataBuff[2];
+                //println(strs[ControlState]);
               }
               checkHeader = 0;
               cmdIndex = 0;
@@ -220,61 +267,61 @@ public class ReceiveData {
 
 
 
-  class Attitude_t {
-    int Roll;
-    int Pitch;
-    int Yaw;
-    byte AliveCnt;
-  }
+class Attitude_t {
+  int Roll;
+  int Pitch;
+  int Yaw;
+  byte AliveCnt;
+}
 
-  class GyroBias_t {
-    int Roll;
-    int Pitch;
-    int Yaw;
-    byte AliveCnt;
-  }
+class GyroBias_t {
+  int Roll;
+  int Pitch;
+  int Yaw;
+  byte AliveCnt;
+}
 
-  class TrimAll_t {
-    int Roll;
-    int Pitch;
-    int Yaw;
-    int Throttle;
-    int Wheel;
-    byte AliveCnt;
-  }
+class TrimAll_t {
+  int Roll;
+  int Pitch;
+  int Yaw;
+  int Throttle;
+  int Wheel;
+  byte AliveCnt;
+}
 
-  class IrMessage_t {
-    int Direction;
-    int IrMessage[] = new int[4];
-    byte AliveCnt;
-  }
+class IrMessage_t {
+  int Direction;
+  int IrMessage[] = new int[4];
+  byte AliveCnt;
+}
 
-  class ImuRawAndAngl_t {
-    int AccX;
-    int AccY;
-    int AccZ;
-    int GyroRoll;
-    int GyroPitch;
-    int GyroYaw;
-    int AngleRoll;
-    int AnglePitch;
-    int AngleYaw;
-    byte AliveCnt;
-  }
+class ImuRawAndAngl_t {
+  int AccX;
+  int AccY;
+  int AccZ;
+  int GyroRoll;
+  int GyroPitch;
+  int GyroYaw;
+  int AngleRoll;
+  int AnglePitch;
+  int AngleYaw;
+  byte AliveCnt;
+}
 
-  class Pressure_t {
-    int Pressure[] = new int[16];
-    byte AliveCnt;
-  }
+class Pressure_t {
+  int Pressure[] = new int[16];
+  byte AliveCnt;
+}
 
-  class Temperature_t {
-    int Temperature[] = new int[8];
-    byte AliveCnt;
-  }
+class Temperature_t {
+  int Temperature[] = new int[8];
+  byte AliveCnt;
+}
 
-  class AnalogStick_t {
-    int Roll;
-    int Pitch;
-    int Yaw;
-    int Throttle;
-  }
+class AnalogStick_t {
+  int Roll;
+  int Pitch;
+  int Yaw;
+  int Throttle;
+}
